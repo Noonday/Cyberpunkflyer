@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyberpunk Flyer</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #1a1a1a;
+            color: #ffffff;
+            font-family: 'Arial', sans-serif;
+        }
+        canvas {
+            border: 5px solid #4a4a4a;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="400" height="600"></canvas>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let spaceship = {
+            x: 50,
+            y: 300,
+            width: 40,
+            height: 20,
+            velocity: 0,
+            gravity: 0.5,
+            thrust: -0.5,
+            rotation: 0, // Rotation in degrees
+            maxRotation: 45,
+            trail: []
+        };
+        let buildings = [];
+        let score = 0;
+        let highScore = 0;
+        let gameStarted = false;
+        let hue = 0;
+        let spacePressed = false;
+
+        function drawSpaceship() {
+            // Draw trail
+            spaceship.trail.forEach((particle) => {
+                const gradient = ctx.createRadialGradient(
+                    particle.x, particle.y, 0,
+                    particle.x, particle.y, particle.size
+                );
+                gradient.addColorStop(0, `hsla(${particle.hue}, 100%, 50%, ${particle.lifetime})`);
+                gradient.addColorStop(1, `hsla(${particle.hue}, 100%, 50%, 0)`);
+                
+                ctx.beginPath();
+                ctx.arc(particle.x, particle.y, particle.size, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+            });
+
+            // Draw spaceship with rotation
+            ctx.save();
+            ctx.translate(spaceship.x + spaceship.width / 2, spaceship.y + spaceship.height / 2);
+            ctx.rotate((spaceship.rotation * Math.PI) / 180);
+            ctx.translate(-spaceship.width / 2, -spaceship.height / 2);
+            
+            ctx.fillStyle = '#5cb9ff';
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(spaceship.width, spaceship.height / 2);
+            ctx.lineTo(0, spaceship.height);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+        }
+
+        function drawBuildings() {
+            buildings.forEach(building => {
+                // Main building
+                ctx.fillStyle = '#4a4a4a';
+                ctx.fillRect(building.x, 0, building.width, building.top);
+                ctx.fillRect(building.x, building.bottom, building.width, canvas.height - building.bottom);
+
+                // Windows
+                ctx.fillStyle = '#ffff00';
+                for (let y = 10; y < building.top - 20; y += 30) {
+                    for (let x = building.x + 10; x < building.x + building.width - 10; x += 20) {
+                        ctx.fillRect(x, y, 10, 20);
+                    }
+                }
+                for (let y = building.bottom + 10; y < canvas.height - 30; y += 30) {
+                    for (let x = building.x + 10; x < building.x + building.width - 10; x += 20) {
+                        ctx.fillRect(x, y, 10, 20);
+                    }
+                }
+            });
+        }
+
+        function updateSpaceship() {
+            if (spacePressed) {
+                spaceship.velocity += spaceship.thrust; // Apply upward thrust
+                spaceship.rotation -= 2; // Rotate up
+                if (spaceship.rotation < -spaceship.maxRotation) {
+                    spaceship.rotation = -spaceship.maxRotation;
+                }
+            } else {
+                spaceship.velocity += spaceship.gravity; // Apply downward gravity
+                spaceship.rotation += 2; // Rotate down
+                if (spaceship.rotation > spaceship.maxRotation) {
+                    spaceship.rotation = spaceship.maxRotation;
+                }
+            }
+            spaceship.y += spaceship.velocity;
+
+            // Update trail with rainbow colors and fewer particles
+            hue += 10;
+            for (let i = 0; i < 2; i++) {
+                spaceship.trail.unshift({
+                    x: spaceship.x - Math.random() * 20,
+                    y: spaceship.y + spaceship.height / 2 + (Math.random() - 0.5) * 10,
+                    size: Math.random() * 3 + 1,
+                    lifetime: 1,
+                    velocityX: -1, // Add a horizontal velocity to the particles
+                    hue: hue % 360 // Cycle through hues
+                });
+            }
+            
+            spaceship.trail = spaceship.trail.filter(particle => {
+                particle.lifetime -= 0.05; // Faster fade out
+                particle.x += particle.velocityX; // Update the particle's position
+                return particle.lifetime > 0;
+            });
+
+            if (spaceship.y <= 0 || spaceship.y + spaceship.height >= canvas.height) {
+                gameOver();
+            }
+        }
+
+        function updateBuildings() {
+            if (buildings.length === 0 || buildings[buildings.length - 1].x < canvas.width - 200) {
+                let gap = 200;
+                let top = Math.random() * (canvas.height - gap - 100) + 50;
+                buildings.push({
+                    x: canvas.width,
+                    top: top,
+                    bottom: top + gap,
+                    width: 80,
+                    scored: false
+                });
+            }
+
+            buildings.forEach(building => {
+                building.x -= 2;
+
+                if (building.x + building.width < spaceship.x && !building.scored) {
+                    score++;
+                    building.scored = true;
+                }
+
+                if (
+                    spaceship.x + spaceship.width > building.x &&
+                    spaceship.x < building.x + building.width &&
+                    (spaceship.y < building.top || spaceship.y + spaceship.height > building.bottom)
+                ) {
+                    gameOver();
+                }
+            });
+
+            buildings = buildings.filter(building => building.x + building.width > 0);
+        }
+
+        function gameOver() {
+            if (score > highScore) {
+                highScore = score;
+            }
+            alert(`Game Over! Your score: ${score}`);
+            spaceship.y = 300;
+            spaceship.velocity = 0;
+            spaceship.trail = [];
+            buildings = [];
+            score = 0;
+            gameStarted = false;
+            spaceship.rotation = 0; // Reset rotation
+        }
+
+        function drawScore() {
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '24px Arial';
+            ctx.fillText(`Score: ${score}`, 10, 30);
+        }
+
+        function drawStartScreen() {
+            ctx.fillStyle = '#2c2c2c';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#ffffff';
+            ctx.font = '30px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('Cyberpunk Flyer', canvas.width / 2, canvas.height / 2 - 50);
+            ctx.font = '20px Arial';
+            ctx.fillText('Press and hold SPACE to fly', canvas.width / 2, canvas.height / 2 + 50);
+            ctx.fillText(`High Score: ${highScore}`, canvas.width / 2, canvas.height / 2 + 100);
+            ctx.textAlign = 'left';
+        }
+
+        function gameLoop() {
+            ctx.fillStyle = '#2c2c2c';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            if (gameStarted) {
+                updateSpaceship();
+                updateBuildings();
+                
+                drawBuildings();
+                drawSpaceship();
+                drawScore();
+            } else {
+                drawStartScreen();
+            }
+            
+            requestAnimationFrame(gameLoop);
+        }
+
+        document.addEventListener('keydown', event => {
+            if (event.code === 'Space') {
+                if (!gameStarted) {
+                    gameStarted = true;
+                }
+                spacePressed = true;
+            }
+        });
+
+        document.addEventListener('keyup', event => {
+            if (event.code === 'Space') {
+                spacePressed = false;
+            }
+        });
+
+        gameLoop();
+    </script>
+</body>
+</html>
